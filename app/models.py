@@ -1,0 +1,62 @@
+from sqlalchemy import BigInteger, String, Integer, DateTime, func, Boolean, Text
+from sqlalchemy.orm import Mapped, mapped_column
+from app.database import Base
+from datetime import datetime
+
+# 1. Таблица Пользователей
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    username: Mapped[str | None] = mapped_column(String, nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    
+    # Баланс
+    generations_balance: Mapped[int] = mapped_column(Integer, default=3)
+    total_generations_used: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Бонус и Настройки
+    is_sub_bonus_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
+    preferred_model: Mapped[str] = mapped_column(String, default="standard") # standard / pro
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+# 2. Таблица Покупок
+class Purchase(Base):
+    __tablename__ = "purchases"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    amount: Mapped[int] = mapped_column(Integer)
+    price: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String, default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+# 3. Таблица Истории (Контекст + Галерея)
+class MessageHistory(Base):
+    __tablename__ = "message_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    role: Mapped[str] = mapped_column(String) # 'user' или 'model'
+    content: Mapped[str] = mapped_column(Text) # Текст или JSON настроек
+    has_image: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    # ID файла в Телеграм (для отправки)
+    file_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    
+    # Ссылка на оригинал (для скачивания документа)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+# 4. Таблица Активных Задач (Страховка от сбоев)
+class GenerationTask(Base):
+    __tablename__ = "generation_tasks"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    cost: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String, default="processing")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
