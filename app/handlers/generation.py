@@ -8,6 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.enums import ChatAction
 from aiogram import html
+import aiohttp
 
 from app.database import async_session
 from app.services.user_service import (
@@ -435,38 +436,68 @@ async def cb_reroll(callback: types.CallbackQuery, bot: Bot):
         print(f"❌ Ошибка reroll: {e}")
         await callback.answer("❌ Ошибка перегенерации", show_alert=True)
 
+# 👇 ЗАМЕНИ ФУНКЦИЮ cb_download ЦЕЛИКОМ НА ЭТУ:
+
+# 👇 УЛУЧШЕННАЯ ВЕРСИЯ ДЛЯ ПРОДАКШЕНА
+
 @router.callback_query(F.data.startswith("download_"))
 async def cb_download(callback: types.CallbackQuery, bot: Bot):
-    """Скачивание оригинала без сжатия"""
-    await callback.answer("📥 Загружаю оригинал...")
+    await callback.answer("📥 Скачиваю оригинал...")
     
     try:
         db_id = int(callback.data.split("_")[1])
-        
         async with async_session() as session: 
             history_item = await get_history_message_by_id(session, db_id)
         
         if not history_item:
             await callback.answer("❌ Запись не найдена.", show_alert=True)
             return
-        
+
         if history_item.image_url:
             try:
-                await bot.send_document(
-                    chat_id=callback.from_user.id, 
-                    document=history_item.image_url, 
-                    caption="💎 Исходное качество (без сжатия)"
-                )
-            except:
-                await callback.answer("❌ Ссылка устарела.", show_alert=True)
+                # 🛡️ ДОБАВИЛИ ТАЙМАУТ: Если качает дольше 30 сек — обрываем, чтобы не вешать сервер
+                timeout = aiohttp.ClientTimeout(total=30)
+                
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    # ssl=False оставляем, это необходимость для этого провайдера
+                    async with session.get(history_item.image_url, ssl=False) as resp:
+                        if resp.status == 200:
+                            # Читаем файл
+                            data = await resp.read()
+                            
+                            # Проверка на пустой файл
+                            if len(data) == 0:
+                                raise Exception("Пустой файл")
+
+                            input_file = types.BufferedInputFile(data, filename=f"image_{db_id}.png")
+                            
+                            await bot.send_document(
+                                chat_id=callback.from_user.id, 
+                                document=input_file, 
+                                caption="💎 Исходное качество (Original)"
+                            )
+                        else:
+                            await callback.answer(f"Ошибка сервера IMG: {resp.status}", show_alert=True)
+            except Exception as e:
+                print(f"Ошибка скачивания: {e}")
+                # Если не вышло скачать (таймаут или ошибка), пробуем отправить ссылку как текст/файл
+                try:
+                    await bot.send_message(
+                        chat_id=callback.from_user.id,
+                        text=f"💎 Не удалось загрузить файл напрямую. Вот ссылка на оригинал:\n{history_item.image_url}"
+                    )
+                except:
+                    await callback.answer("❌ Не удалось получить файл.", show_alert=True)
+
         elif history_item.file_id:
             await bot.send_photo(
                 chat_id=callback.from_user.id, 
-                photo=history_item.file_id,
-                caption="📸 Копия из Telegram"
+                photo=history_item.file_id, 
+                caption="📸 Копия из Telegram (Оригинал недоступен)"
             )
         else: 
             await callback.answer("❌ Файл потерян.", show_alert=True)
+
     except Exception as e:
         print(f"❌ Ошибка download: {e}")
         await callback.answer("❌ Ошибка загрузки", show_alert=True)

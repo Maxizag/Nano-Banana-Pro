@@ -13,7 +13,7 @@ router = Router()
 # =======================================================
 # ⚙️ НАСТРОЙКИ
 # =======================================================
-CHANNEL_LINK = "https://t.me/nanobanana_ai"  
+CHANNEL_LINK = "https://t.me/nanobanan_promt"
 WELCOME_PHOTO = "AgACAgIAAxkBAAIGbWky1V4aiUImfckmTzqXjKcykdunAAJqC2sb4L2ZSWGkUXDH06FzAQADAgADeQADNgQ" 
 
 # =======================================================
