@@ -101,7 +101,7 @@ def get_no_balance_kb():
 def get_preflight_kb(model_type: str, ratio: str, quality: str):
     builder = InlineKeyboardBuilder()
     
-    model_btn = "💎 Модель: PRO" if model_type == "pro" else "🍌 Модель: Обычная"
+    model_btn = "💎 Модель: PRO" if model_type == "pro" else "🍌 Модель: Standard"
     builder.button(text=model_btn, callback_data="pf_toggle_model")
     builder.button(text=f"📐 Формат: {ratio}", callback_data="pf_select_ratio")
     
@@ -214,7 +214,7 @@ async def cb_pf_toggle_model(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=get_preflight_kb(new_model, ratio, quality), 
         parse_mode="Markdown"
     )
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
 
 @router.callback_query(GenState.preflight_check, F.data == "pf_toggle_quality")
 async def cb_pf_toggle_quality(callback: types.CallbackQuery, state: FSMContext):
@@ -245,7 +245,7 @@ async def cb_pf_select_ratio(callback: types.CallbackQuery, state: FSMContext):
         reply_markup=get_ratio_kb(), 
         parse_mode="Markdown"
     )
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
 
 @router.callback_query(GenState.selecting_ratio, F.data == "pf_back")
 async def cb_pf_ratio_back(callback: types.CallbackQuery, state: FSMContext):
@@ -269,7 +269,7 @@ async def cb_pf_ratio_back(callback: types.CallbackQuery, state: FSMContext):
         ), 
         parse_mode="Markdown"
     )
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
 
 @router.callback_query(GenState.selecting_ratio, F.data.startswith("set_ratio_"))
 async def cb_pf_set_ratio(callback: types.CallbackQuery, state: FSMContext):
@@ -277,9 +277,13 @@ async def cb_pf_set_ratio(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(pf_ratio=new_ratio)
     await cb_pf_ratio_back(callback, state)
 
+# 👇 ЗАМЕНИ ФУНКЦИЮ cb_pf_start НА ЭТУ 👇
+
 @router.callback_query(GenState.preflight_check, F.data == "pf_start")
 async def cb_pf_start(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    
+    # 1. Считываем АКТУАЛЬНЫЕ данные из состояния (меню)
     prompt = data.get("pf_prompt")
     image_urls = data.get("pf_image_urls")
     model_type = data.get("pf_model")
@@ -289,23 +293,17 @@ async def cb_pf_start(callback: types.CallbackQuery, state: FSMContext):
     cost = config.COST_PRO if model_type == "pro" else config.COST_STANDARD
     use_pro = (model_type == "pro")
     
-    # 👇 ИСПРАВЛЕННАЯ ЛОГИКА: Выбираем правильное разрешение
-    resolution = "1K" # По умолчанию (для обычного режима или HD)
-    
+    # Логика разрешения
+    resolution = "1K"
     if use_pro:
-        if quality == "4k":
-            resolution = "4K"
-        elif quality == "2k":
-            resolution = "2K"
-        else:
-            resolution = "1K" # Если выбрано HD
+        if quality == "4k": resolution = "4K"
+        elif quality == "2k": resolution = "2K"
     
-    await callback.message.edit_text(
-        f"🚀 **Запуск...**\n⚙️ {model_type.upper()} | {ratio} | {resolution}", 
-        parse_mode="Markdown"
-    )
-    await callback.answer()
+    # 2. Просто уведомляем пользователя (Toast), НЕ трогая сообщение с меню
+    await callback.answer(f"🚀 Запускаю...", show_alert=False)
     
+    # 3. Запускаем генерацию
+    # Меню останется висеть в чате, и юзер сможет поменять настройки и нажать снова
     await process_generation(
         callback.message, 
         callback.from_user.id, 
@@ -316,7 +314,9 @@ async def cb_pf_start(callback: types.CallbackQuery, state: FSMContext):
         use_pro_model=use_pro, 
         resolution=resolution
     )
-    await state.clear()
+    
+    # ⚠️ ВАЖНО: Мы НЕ делаем await state.clear()
+    # Состояние остается активным, чтобы кнопки в меню продолжали работать
 
 # =====================================================================
 # ВХОДНЫЕ ТОЧКИ
@@ -460,10 +460,6 @@ async def cb_reroll(callback: types.CallbackQuery, bot: Bot):
         print(f"❌ Ошибка reroll: {e}")
         await callback.answer("❌ Ошибка перегенерации", show_alert=True)
 
-# 👇 ЗАМЕНИ ФУНКЦИЮ cb_download ЦЕЛИКОМ НА ЭТУ:
-
-# 👇 УЛУЧШЕННАЯ ВЕРСИЯ ДЛЯ ПРОДАКШЕНА
-
 @router.callback_query(F.data.startswith("download_"))
 async def cb_download(callback: types.CallbackQuery, bot: Bot):
     await callback.answer("📥 Скачиваю оригинал...")
@@ -529,7 +525,7 @@ async def cb_download(callback: types.CallbackQuery, bot: Bot):
 @router.callback_query(F.data.startswith("edit_"))
 async def cb_edit_result(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     """Редактирование существующего результата"""
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
     
     try:
         db_id = int(callback.data.split("_")[1])
@@ -605,12 +601,12 @@ async def cb_cancel(callback: types.CallbackQuery, state: FSMContext):
     """Отмена мастера"""
     await state.clear()
     await callback.message.edit_text("❌ Действие отменено.")
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("cat_"))
 async def cb_select_category(callback: types.CallbackQuery, state: FSMContext):
     """Выбор категории генерации"""
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
     
     category = callback.data.split("_")[1]
     await state.clear()
@@ -754,21 +750,31 @@ async def process_generation(
         )
         return
 
-    # 2. Сообщение о старте
-    msg_type = "PRO" if use_pro_model else "Обычная"
-    wait_msg = await message.answer(
-        f"⏳ <b>Генерирую...</b>\n"
-        f"⚙️ {msg_type} ({aspect_ratio} | {resolution})\n"
-        f"💸 Списано: {cost} 🍌", 
-        parse_mode="HTML"
-    )
+    # ✅ Нормализация URL
+    final_urls = normalize_image_urls(image_urls)
+    
+    # 🔥 ОПРЕДЕЛЯЕМ СЦЕНАРИЙ: Простой vs Сложный
+    is_complex_standard = (not use_pro_model and len(final_urls) >= 2)
+    
+# 2. Сообщение о старте (РАЗНОЕ для простого/сложного)
+    if is_complex_standard:
+        # 📌 СЦЕНАРИЙ Б: Сложный (Standard + много фото) - С ПРЕДУПРЕЖДЕНИЕМ
+        wait_msg = await message.answer(
+            "⏳ <b>Создаю...</b>\n\n"
+            "⚠️ <b>Вы объединяете несколько фото в модели STANDARD.</b>\n"
+            "Детали и сходство (особенно лица) могут искажаться.\n"
+            "💡 <i>Для максимальной точности рекомендуем модель PRO.</i>",
+            parse_mode="HTML"
+        )
+        should_delete_wait_msg = False  # НЕ УДАЛЯЕМ
+    else:
+        # 📌 СЦЕНАРИЙ А: Простой - ТОЛЬКО статус
+        wait_msg = await message.answer("⏳ <b>Создаю...</b>", parse_mode="HTML")
+        should_delete_wait_msg = True  # УДАЛЯЕМ
 
     try:
         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_PHOTO)
         
-        # 3. ✅ Нормализация URL
-        final_urls = normalize_image_urls(image_urls)
-
         # 4. Генерация
         result_data = await generate_image(
             bot, prompt, final_urls, False, 
@@ -785,10 +791,12 @@ async def process_generation(
             result_file = result_data
         
         if result_file:
-            try: 
-                await wait_msg.delete()
-            except: 
-                pass
+            # 🔥 УДАЛЯЕМ СООБЩЕНИЕ ТОЛЬКО ДЛЯ ПРОСТОГО СЦЕНАРИЯ
+            if should_delete_wait_msg:
+                try: 
+                    await wait_msg.delete()
+                except: 
+                    pass
             
             # 6. Формирование caption
             safe_prompt = html.quote(prompt[:50])
