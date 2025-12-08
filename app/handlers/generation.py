@@ -106,7 +106,14 @@ def get_preflight_kb(model_type: str, ratio: str, quality: str):
     builder.button(text=f"📐 Формат: {ratio}", callback_data="pf_select_ratio")
     
     if model_type == "pro":
-        qual_btn = "👑 Качество: 4K" if quality == "4k" else "⚡️ Качество: HD"
+        # Логика подписи кнопки
+        if quality == "4k":
+            qual_btn = "👑 Качество: 4K"
+        elif quality == "2k":
+            qual_btn = "🌟 Качество: 2K"
+        else:
+            qual_btn = "⚡️ Качество: HD"
+            
         builder.button(text=qual_btn, callback_data="pf_toggle_quality")
     
     cost = config.COST_PRO if model_type == "pro" else config.COST_STANDARD
@@ -167,7 +174,7 @@ async def start_preflight_check(message: types.Message, state: FSMContext, promp
         pf_image_urls=normalized_urls,  # ✅ Всегда список
         pf_model=pref_model, 
         pf_ratio="1:1", 
-        pf_quality="hd"
+        pf_quality="2k"
     )
     await state.set_state(GenState.preflight_check)
     
@@ -212,16 +219,23 @@ async def cb_pf_toggle_model(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(GenState.preflight_check, F.data == "pf_toggle_quality")
 async def cb_pf_toggle_quality(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    new_q = "4k" if data.get("pf_quality", "hd") == "hd" else "hd"
+    current_q = data.get("pf_quality", "2k")
+    
+    # ЦИКЛ: HD -> 2K -> 4K -> HD
+    if current_q == "hd":
+        new_q = "2k"
+    elif current_q == "2k":
+        new_q = "4k"
+    else:
+        new_q = "hd"
+        
     await state.update_data(pf_quality=new_q)
     
     model = data.get("pf_model", "standard")
     ratio = data.get("pf_ratio", "1:1")
     
-    await callback.message.edit_reply_markup(
-        reply_markup=get_preflight_kb(model, ratio, new_q)
-    )
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.message.edit_reply_markup(reply_markup=get_preflight_kb(model, ratio, new_q))
+    await callback.answer()
 
 @router.callback_query(GenState.preflight_check, F.data == "pf_select_ratio")
 async def cb_pf_select_ratio(callback: types.CallbackQuery, state: FSMContext):
@@ -267,20 +281,30 @@ async def cb_pf_set_ratio(callback: types.CallbackQuery, state: FSMContext):
 async def cb_pf_start(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     prompt = data.get("pf_prompt")
-    image_urls = data.get("pf_image_urls")  # ✅ Уже список
+    image_urls = data.get("pf_image_urls")
     model_type = data.get("pf_model")
     ratio = data.get("pf_ratio")
     quality = data.get("pf_quality")
     
     cost = config.COST_PRO if model_type == "pro" else config.COST_STANDARD
     use_pro = (model_type == "pro")
-    resolution = "4K" if (use_pro and quality == "4k") else "1K"
+    
+    # 👇 ИСПРАВЛЕННАЯ ЛОГИКА: Выбираем правильное разрешение
+    resolution = "1K" # По умолчанию (для обычного режима или HD)
+    
+    if use_pro:
+        if quality == "4k":
+            resolution = "4K"
+        elif quality == "2k":
+            resolution = "2K"
+        else:
+            resolution = "1K" # Если выбрано HD
     
     await callback.message.edit_text(
         f"🚀 **Запуск...**\n⚙️ {model_type.upper()} | {ratio} | {resolution}", 
         parse_mode="Markdown"
     )
-    await callback.answer()  # ✅ ДОБАВЛЕНО
+    await callback.answer()
     
     await process_generation(
         callback.message, 
