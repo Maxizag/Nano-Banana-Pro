@@ -132,20 +132,46 @@ async def cb_buy_package(callback: types.CallbackQuery):
 @router.message(F.text == "👤 Профиль") 
 @router.message(Command("profile"))
 async def show_profile(message: types.Message):
-    async with async_session() as session: data = await get_user_profile_data(session, message.from_user.id)
-    if not data: await message.answer("Ошибка."); return
+    """
+    Профиль пользователя (Clean UI по ТЗ)
+    - Показывает ID, баланс, счетчик шедевров
+    - 3 кнопки: Купить, Заработать, Техподдержка
+    """
+    user_id = message.from_user.id
+    
+    async with async_session() as session:
+        data = await get_user_profile_data(session, user_id)
+    
+    if not data:
+        await message.answer("❌ Ошибка загрузки профиля.")
+        return
     
     user = data['user']
-    reg = user.created_at.strftime("%d.%m.%Y")
     
-    text = (f"👤 *Твой профиль*\n\n🍌 Баланс: *{user.generations_balance}*\n🎨 Артов: *{user.total_generations_used}*\n📅 Регистрация: *{reg}*")
+    # 📝 ТЕКСТ ПО ТЗ (HTML разметка для моноширинного ID)
+    text = (
+        "👤 <b>Твой профиль</b>\n\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"🍌 Баланс: <b>{user.generations_balance} шт.</b>\n"
+        f"🎨 Создано шедевров: <b>{user.total_generations_used}</b>\n\n"
+        "👇 <b>Управление аккаунтом:</b>"
+    )
     
-    b = InlineKeyboardBuilder()
-    b.button(text="🍌 Купить бананы", callback_data="goto_shop")
-    b.button(text="🎁 Получить бесплатно", callback_data="goto_free")
-    b.adjust(1)
+    # ⌨️ КНОПКИ ПО ТЗ (3 ряда)
+    builder = InlineKeyboardBuilder()
     
-    await message.answer(text, parse_mode="Markdown", reply_markup=b.as_markup())
+    # Ряд 1: Монетизация
+    builder.button(text="🍌 КУПИТЬ БАНАНЫ", callback_data="goto_shop")
+    
+    # Ряд 2: Удержание
+    builder.button(text="⚒️ Заработать бананы", callback_data="goto_free")
+    
+    # Ряд 3: Доверие (URL-кнопка)
+    builder.button(text="👨‍💻 Техподдержка", url="https://t.me/nan0banana_help")
+    
+    builder.adjust(1)  # Каждая кнопка на новой строке
+    
+    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
 @router.message(F.text.contains("Гайд")) 
 async def cmd_guide(message: types.Message):
