@@ -321,8 +321,9 @@ async def cb_pf_start(callback: types.CallbackQuery, state: FSMContext):
 # =====================================================================
 # ВХОДНЫЕ ТОЧКИ
 # =====================================================================
-@router.message(F.media_group_id, StateFilter(GenState.free_mode, None))
+@router.message(F.media_group_id, StateFilter(GenState.free_mode, None, GenState.preflight_check, GenState.selecting_ratio))
 async def handle_album_input(message: types.Message, state: FSMContext, bot: Bot, album: list[types.Message] = None):
+    await state.clear() # <--- ДОБАВИТЬ ЭТУ СТРОКУ, ЧТОБЫ ЗАБЫТЬ СТАРОЕ МЕНЮ
     """Обработка альбомов (2-10 фото)"""
     messages = album if album else [message]
     count = len(messages)
@@ -380,6 +381,63 @@ async def cmd_start_creating(message: types.Message, state: FSMContext):
         "Напиши, что создать, или пришли *от 1 до 4 фото*, которые нужно изменить или объединить 👇"
     )
     await message.answer(text, parse_mode="Markdown")
+
+    # 👇 ВСТАВИТЬ ЭТОТ БЛОК ПЕРЕД handle_free_text 👇
+
+@router.message(StateFilter(GenState.preflight_check, GenState.selecting_ratio), F.text)
+async def handle_new_prompt_during_settings(message: types.Message, state: FSMContext):
+    """
+    Если юзер был в меню настроек (или выбора формата), 
+    но решил просто написать новый промпт — начинаем всё заново.
+    """
+    # 1. Проверяем, не нажал ли он кнопку меню (Старт, Профиль и т.д.)
+    if message.text in IGNORED_TEXTS: 
+        return
+
+    # 2. Сбрасываем старые данные (предыдущий промпт и настройки)
+    await state.clear()
+    
+    # 3. Запускаем новую проверку с новым текстом
+    await start_preflight_check(message, state, message.text, None)
+
+# 👆 КОНЕЦ ВСТАВКИ 👆
+
+# Дальше идет твоя старая функция:
+# @router.message(F.text, StateFilter(GenState.free_mode, None))
+# async def handle_free_text(...):
+
+# 👇 ВСТАВИТЬ ЭТО ПОСЛЕ handle_new_prompt_during_settings 👇
+
+@router.message(StateFilter(GenState.preflight_check, GenState.selecting_ratio), F.photo)
+async def handle_new_photo_during_settings(message: types.Message, state: FSMContext, bot: Bot):
+    """
+    Если юзер был в меню настроек, но прислал ФОТО — сбрасываем и начинаем заново.
+    """
+    # 1. Если это альбом (несколько фото) — пропускаем, пусть обрабатывает handle_album_input
+    # Но для этого нужно добавить состояние в handle_album_input или сбросить его тут.
+    # Самый простой способ для альбома — просто сбросить состояние:
+    if message.media_group_id:
+        await state.clear()
+        # Дальше aiogram сам передаст это в handle_album_input, так как состояние уже None
+        # Но чтобы сработало наверняка, вызовем его вручную или просто вернемся (т.к. фильтр None сработает)
+        return
+
+    # 2. Сбрасываем старые настройки
+    await state.clear()
+    
+    # 3. Обрабатываем фото (копируем логику из handle_general_photo)
+    url = await get_photo_url(bot, message.photo[-1].file_id)
+    
+    if message.caption:
+        # Если есть подпись — сразу в настройки
+        await start_preflight_check(message, state, message.caption, [url])
+    else:
+        # Если подписи нет — просим ввести
+        await state.update_data(pending_image_urls=[url])
+        await state.set_state(GenState.waiting_for_caption)
+        await message.reply("📸 **Фото принято!** Напиши, что с ним сделать.", parse_mode="Markdown")
+
+# 👆 КОНЕЦ ВСТАВКИ 👆
 
 @router.message(F.text, StateFilter(GenState.free_mode, None))
 async def handle_free_text(message: types.Message, state: FSMContext):
