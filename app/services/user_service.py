@@ -274,14 +274,37 @@ async def get_user(session, telegram_id: int):
     result = await session.execute(query)
     return result.scalars().first()
 
-async def create_user(session, telegram_id: int, username: str, full_name: str):
-    """Создает нового пользователя без начисления баланса (баланс начислим отдельно)"""
+async def create_user(session, telegram_id: int, username: str, full_name: str, referrer_id: int = None):
     new_user = User(
         telegram_id=telegram_id, 
         username=username, 
         full_name=full_name,
-        generations_balance=0 # Создаем с нулем, бонус дадим в start.py
+        referrer_id=referrer_id, # Записываем ID пригласившего
+        generations_balance=0 
     )
     session.add(new_user)
     await session.commit()
     return new_user
+
+# 👇 ДОБАВИТЬ В КОНЕЦ ФАЙЛА 👇
+
+async def claim_subscription_bonus(session, user_id: int, bonus_type: str, amount: int) -> bool:
+    """
+    Выдает бонус за подписку, если еще не выдавали.
+    bonus_type: 'channel' или 'chat'
+    """
+    # Используем твой существующий get_user (убедись, что он есть в файле)
+    user = await get_user(session, user_id) 
+    if not user: return False
+
+    if bonus_type == 'channel':
+        if user.is_channel_sub_claimed: return False # Уже получал
+        user.is_channel_sub_claimed = True
+    
+    elif bonus_type == 'chat':
+        if user.is_chat_sub_claimed: return False # Уже получал
+        user.is_chat_sub_claimed = True
+    
+    user.generations_balance += amount
+    await session.commit()
+    return True

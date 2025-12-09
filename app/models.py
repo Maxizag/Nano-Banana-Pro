@@ -19,6 +19,12 @@ class User(Base):
     # Бонус и Настройки
     is_sub_bonus_claimed: Mapped[bool] = mapped_column(Boolean, default=False)
     preferred_model: Mapped[str] = mapped_column(String, default="standard") # standard / pro
+
+
+    is_channel_sub_claimed: Mapped[bool] = mapped_column(Boolean, default=False) # Канал
+    is_chat_sub_claimed: Mapped[bool] = mapped_column(Boolean, default=False)    # Чат
+    referrer_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)   # Кто пригласил
+
     
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

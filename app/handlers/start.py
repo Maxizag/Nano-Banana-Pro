@@ -1,8 +1,7 @@
-from aiogram import Router, types, F
-from aiogram.filters import CommandStart
+from aiogram import Router, types, F, Bot
+from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.utils.markdown import hbold, hlink
 
 from app.database import async_session
 from app.services.user_service import get_user, create_user, admin_change_balance
@@ -10,108 +9,93 @@ from app import config
 
 router = Router()
 
-# =======================================================
-# ⚙️ НАСТРОЙКИ
-# =======================================================
+# 👇 Твои настройки
+WELCOME_PHOTO = "AgACAgIAAxkBAAIGbWky1V4aiUImfckmTzqXjKcykdunAAJqC2sb4L2ZSWGkUXDH06FzAQADAgADeQADNgQ"
 CHANNEL_LINK = "https://t.me/nanobanan_promt"
-WELCOME_PHOTO = "AgACAgIAAxkBAAIGbWky1V4aiUImfckmTzqXjKcykdunAAJqC2sb4L2ZSWGkUXDH06FzAQADAgADeQADNgQ" 
 
-# =======================================================
-# 🛠 ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ (СКЛОНЕНИЕ)
-# =======================================================
 def get_banana_word(n: int) -> str:
-    """Возвращает правильное окончание: банан, банана, бананов"""
     n = abs(n)
-    if n % 10 == 1 and n % 100 != 11:
-        return "банан"
-    if 2 <= n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20):
-        return "банана"
+    if n % 10 == 1 and n % 100 != 11: return "банан"
+    if 2 <= n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20): return "банана"
     return "бананов"
 
-# =======================================================
-# 🎹 НИЖНЕЕ МЕНЮ (REPLY KEYBOARD)
-# =======================================================
+# 👇 МЕНЮ
 def get_main_kb():
     kb = [
         [KeyboardButton(text="✨ Начать творить")],
         [KeyboardButton(text="🍌 Купить бананы"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="Фарминг🍌"), KeyboardButton(text="📚 Гайд")]
+        [KeyboardButton(text="🎁 Бесплатно🍌🍌"), KeyboardButton(text="📚 Гайд")]
     ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="Пиши, что создать")
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="Пиши сюда ")
 
-# =======================================================
-# 👋 ОБРАБОТЧИК /START
-# =======================================================
 @router.message(CommandStart())
-async def cmd_start(message: types.Message, state: FSMContext):
+async def cmd_start(message: types.Message, command: CommandObject, state: FSMContext, bot: Bot):
     await state.clear()
-    
     user_id = message.from_user.id
-    username = message.from_user.username
-    full_name = message.from_user.full_name
+    
+    # 1. ПРОВЕРЯЕМ РЕФЕРАЛЬНУЮ ССЫЛКУ
+    referrer_id = None
+    args = command.args
+    if args and args.isdigit():
+        possible_ref = int(args)
+        if possible_ref != user_id:
+            referrer_id = possible_ref
 
     async with async_session() as session:
         user = await get_user(session, user_id)
         
-        # -----------------------------------------------------------
-        # СЦЕНАРИЙ 1: НОВЫЙ ПОЛЬЗОВАТЕЛЬ
-        # -----------------------------------------------------------
+        # 🆕 СЦЕНАРИЙ: НОВЫЙ ПОЛЬЗОВАТЕЛЬ
         if not user:
-            await create_user(session, telegram_id=user_id, username=username, full_name=full_name)
+            await create_user(session, telegram_id=user_id, username=message.from_user.username, full_name=message.from_user.full_name, referrer_id=referrer_id)
             
-            # Начисляем 3 банана бонуса
-            bonus = 3
-            await admin_change_balance(session, user_id, bonus)
+            welcome_bonus = 2
+            await admin_change_balance(session, user_id, welcome_bonus)
             
-            # Склоняем слово
-            word = get_banana_word(bonus)
-            
-            welcome_text = (
-                f"👋 Привет! Я *Nano Banana Pro* 🍌 — твой карманный AI-фотошоп.\n\n"
-                f"🎁 *Тебе уже начислено {bonus} подарочных {word}*!\n"
-                f"💡 Идеи и промпты смотри тут: [Наш Канал]({CHANNEL_LINK})\n\n"
-                f"*Я готов творить!*\n"
-                f"Напиши, что создать, или пришли *от 1 до 4 фото*, которые нужно изменить или объединить 👇"
+            # Бонус другу
+            if referrer_id:
+                try:
+                    await admin_change_balance(session, referrer_id, 2)
+                    await bot.send_message(referrer_id, "🎉 **Друг перешел по ссылке!**\n🍌 Тебе начислено: +2 банана", parse_mode="Markdown")
+                except: pass
+
+            word = get_banana_word(welcome_bonus)
+            # 👇 Твой текст (без изменений, Markdown)
+            text = (
+                    f"👋 Привет! Я *Nano Banana Pro 🍌* — твой карманный AI-фотошоп.\n\n"
+                    f"🎁 *Тебе уже начислено {welcome_bonus} подарочных {word}*\n"
+                    f"💡 Идеи и промпты смотри тут: [Наш Канал]({CHANNEL_LINK})\n\n"
+                    f"*Я готов творить!*\n"
+                    f"Напиши, что создать, или пришли *от 1 до 4 фото*, которые нужно изменить или объединить 👇"
             )
             
             try:
-                await message.answer_photo(
-                    photo=WELCOME_PHOTO,
-                    caption=welcome_text,
-                    parse_mode="Markdown",
-                    reply_markup=get_main_kb()
-                )
+                if "AgAC" in WELCOME_PHOTO: 
+                    await message.answer_photo(WELCOME_PHOTO, caption=text, parse_mode="Markdown", reply_markup=get_main_kb())
+                else: 
+                    await message.answer(text, parse_mode="Markdown", reply_markup=get_main_kb())
             except Exception as e:
                 print(f"Ошибка фото: {e}")
-                await message.answer(welcome_text, parse_mode="Markdown", reply_markup=get_main_kb())
+                # Если фото не грузится, шлем текст
+                await message.answer(text, parse_mode="Markdown", reply_markup=get_main_kb())
 
-        # -----------------------------------------------------------
-        # СЦЕНАРИЙ 2: СТАРЫЙ ПОЛЬЗОВАТЕЛЬ
-        # -----------------------------------------------------------
+        # 👴 СЦЕНАРИЙ: СТАРЫЙ ПОЛЬЗОВАТЕЛЬ
         else:
-            balance = user.generations_balance
-            
-            # 🅾️ СЦЕНАРИЙ В: БАЛАНС 0
-            if balance == 0:
+            bal = user.generations_balance
+            if bal == 0:
+                # 🛠 ИСПРАВЛЕНО: Убраны лишние звездочки (** -> *)
                 text = (
-                    f"👋 *С возвращением!*\n"
+                    f"👋 С возвращением!\n"
                     f"🍌 Твой баланс: *0 бананов*\n\n"
-                    f"Напиши, что создать, или пришли *от 1 до 4 фото*, которые нужно изменить или объединить 👇"
+                    f"👇 Пополни запас кнопкой *[🎁 Бесплатно🍌🍌]*"
                 )
-            
-            # ✅ СЦЕНАРИЙ С: БАЛАНС > 0 (Оставляем как было)
             else:
-                word = get_banana_word(balance)
+                word = get_banana_word(bal)
+                # 🛠 ИСПРАВЛЕНО: Убраны лишние звездочки (** -> *)
                 text = (
                     f"👋 *С возвращением!*\n"
-                    f"🍌 Твой баланс: *{balance} {word}*\n\n"
+                    f"🍌 Твой баланс: *{bal} {word}*\n\n"
                     f"*Я готов творить!*\n"
                     f"Напиши, что создать, или пришли *от 1 до 4 фото*, которые нужно изменить или объединить 👇"
                 )
             
-            # Отправляем сообщение (без фото, как ты и просил)
-            await message.answer(
-                text, 
-                parse_mode="Markdown", 
-                reply_markup=get_main_kb()
-            )
+            await message.answer(text, parse_mode="Markdown", reply_markup=get_main_kb())

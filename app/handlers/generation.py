@@ -321,7 +321,7 @@ async def cb_pf_start(callback: types.CallbackQuery, state: FSMContext):
 # =====================================================================
 # ВХОДНЫЕ ТОЧКИ
 # =====================================================================
-@router.message(F.media_group_id, StateFilter(GenState.free_mode, None, GenState.preflight_check, GenState.selecting_ratio))
+@router.message(F.chat.type == "private", F.media_group_id, StateFilter(GenState.free_mode, None, GenState.preflight_check, GenState.selecting_ratio))
 async def handle_album_input(message: types.Message, state: FSMContext, bot: Bot, album: list[types.Message] = None):
     await state.clear() # <--- ДОБАВИТЬ ЭТУ СТРОКУ, ЧТОБЫ ЗАБЫТЬ СТАРОЕ МЕНЮ
     """Обработка альбомов (2-10 фото)"""
@@ -439,14 +439,14 @@ async def handle_new_photo_during_settings(message: types.Message, state: FSMCon
 
 # 👆 КОНЕЦ ВСТАВКИ 👆
 
-@router.message(F.text, StateFilter(GenState.free_mode, None))
+@router.message(F.chat.type == "private", F.text, StateFilter(GenState.free_mode, None))
 async def handle_free_text(message: types.Message, state: FSMContext):
     """Обработка текста без фото"""
     if message.text in IGNORED_TEXTS: 
         return
     await start_preflight_check(message, state, message.text, None)
 
-@router.message(F.photo, StateFilter(GenState.free_mode, None))
+@router.message(F.chat.type == "private", F.photo, StateFilter(GenState.free_mode, None))
 async def handle_general_photo(message: types.Message, state: FSMContext, bot: Bot):
     """Обработка одиночного фото"""
     if message.media_group_id: 
