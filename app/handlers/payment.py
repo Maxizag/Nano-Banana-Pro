@@ -117,17 +117,27 @@ async def cb_buy_package(callback: types.CallbackQuery):
     async with async_session() as session:
         purchase = await create_purchase_record(session, user_id, package['price'], package['gens'])
         
-    # Заглушка ссылки
-    link = f"https://t.me/nanobanan_promt" 
-    emo = package['emoji'] if package['emoji'] else "🍌"
+# ... (выше идет создание purchase) ...
+
+    # Ссылка на оплату (заглушка)
+    fake_payment_link = f"https://t.me/nanobanana_ai" 
     
-    text = (f"⚡ *Отличный выбор!*\n\nБаланс: +*{package['gens']} {package['suffix']}* {emo}\n💳 К оплате: *{package['price']}₽*\n\n⏳ _Бананы зачислим сразу после оплаты._")
+    # 👇 НОВЫЙ ТЕКСТ (HTML)
+    text = (
+        "⚡ <b>Отличный выбор!</b>\n\n"
+        f"🍌 Пополнение: <b>+{package['gens']} {package['suffix']}</b>\n"
+        f"💳 К оплате: <b>{package['price']}₽</b>\n\n"
+        "⏳ <i>Бананы зачислим сразу после оплаты.</i>\n\n"
+        "📄 Оплачивая, вы принимаете условия <a href='https://telegra.ph/PUBLICHNAYA-OFERTA-12-09-5'>Оферты</a>"
+    )
     
-    b = InlineKeyboardBuilder()
-    b.button(text=f"💳 Оплатить {package['price']}₽", url=link)
-    b.button(text="🔙 Другой тариф", callback_data="goto_shop")
-    b.adjust(1)
-    await callback.message.edit_text(text, reply_markup=b.as_markup(), parse_mode="Markdown")
+    builder = InlineKeyboardBuilder()
+    builder.button(text=f"💳 Оплатить {package['price']}₽", url=fake_payment_link)
+    builder.button(text="🔙 Другой тариф", callback_data="goto_shop")
+    builder.adjust(1)
+    
+    # ⚠️ ВАЖНО: parse_mode="HTML" и disable_web_page_preview=True (чтобы ссылка не разворачивалась в картинку)
+    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML", disable_web_page_preview=True)
 
 @router.message(F.text == "👤 Профиль") 
 @router.message(Command("profile"))
@@ -173,15 +183,28 @@ async def show_profile(message: types.Message):
     
     await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
-@router.message(F.text.contains("Гайд")) 
-async def cmd_guide(message: types.Message):
-    await message.answer("📚 *Гайд по Nano Banana*\n\n1. **Текст в картинку**: Просто напиши, что хочешь увидеть.\n2. **Фото + Текст**: Пришли фото и подпиши.\n3. **Замена**: Нажми «Начать творить» -> «Заменить объект».\n\n💡 *Совет:* Для лучших результатов используй PRO режим.", parse_mode="Markdown")
+# 👇 ЗАМЕНИТЬ ФУНКЦИЮ cmd_guide НА ЭТУ 👇
 
-# --- ДОП КОЛБЕКИ ---
-@router.callback_query(F.data == "goto_shop")
-async def cb_goto_shop(c: types.CallbackQuery): await c.answer(); await cmd_shop(c.message)
-
-@router.callback_query(F.data == "goto_free")
-async def cb_goto_free(c: types.CallbackQuery, bot: Bot): 
-    await c.answer()
-    await show_freebies(c.message, bot)
+@router.message(F.text == "ℹ️ О нас") 
+async def cmd_about(message: types.Message):
+    text = (
+        "ℹ️ <b>О сервисе Nano Banana Pro</b>\n"
+        "Сервис предоставляет доступ к облачной генерации изображений с помощью нейросети.\n"
+        "🍌 <b>Бананы</b> — это внутренняя валюта, которая используется для оплаты генераций.\n\n"
+        
+        "👤 <b>Владелец сервиса:</b>\n"
+        "Кузьмичева Диана Юрьевна\n"
+        "📄 <b>Юридический статус:</b>\n"
+        "Самозанятый (Плательщик НПД)\n"
+        "🆔 <b>ИНН:</b> 025502709811\n\n"
+        
+        "📞 <b>Контакты:</b>\n"
+        "Telegram: @nan0banana_help\n"
+        "Email: help.nanobanan@gmail.com\n\n"
+        
+        "⚖️ <b>Документы:</b>\n"
+        "• <a href='https://telegra.ph/PUBLICHNAYA-OFERTA-12-09-5'>Договор-оферта</a>\n"
+        "• <a href='https://telegra.ph/POLITIKA-V-OTNOSHENII-OBRABOTKI-PERSONALNYH-DANNYH-12-09-5'>Политика конфиденциальности</a>"
+    )
+    # disable_web_page_preview=True чтобы не вылезала превьюшка телеграфа
+    await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)

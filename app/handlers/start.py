@@ -24,7 +24,7 @@ def get_main_kb():
     kb = [
         [KeyboardButton(text="✨ Начать творить")],
         [KeyboardButton(text="🍌 Купить бананы"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="🎁 Бесплатно🍌🍌"), KeyboardButton(text="📚 Гайд")]
+        [KeyboardButton(text="🎁 Бесплатно🍌🍌"), KeyboardButton(text="ℹ️ О нас")]
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="Пиши сюда ")
 
