@@ -208,3 +208,15 @@ async def cmd_about(message: types.Message):
     )
     # disable_web_page_preview=True чтобы не вылезала превьюшка телеграфа
     await message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+
+@router.callback_query(F.data == "goto_shop")
+async def cb_goto_shop(callback: types.CallbackQuery):
+    await callback.answer()
+    # Вызываем функцию магазина (она выше в этом же файле)
+    await cmd_shop(callback.message)
+
+@router.callback_query(F.data == "goto_free")
+async def cb_goto_free(callback: types.CallbackQuery, bot: Bot):
+    await callback.answer()
+    # Вызываем функцию с заданиями (она тоже в этом файле)
+    await show_freebies(callback.message, bot)

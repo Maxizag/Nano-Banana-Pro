@@ -94,7 +94,7 @@ async def get_photo_url(bot: Bot, file_id: str) -> str:
 def get_no_balance_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 Купить бананы", callback_data="goto_shop")
-    builder.button(text="🎁 Получить бесплатно", callback_data="get_bonus")
+    builder.button(text="🎁 Получить бесплатно", callback_data="goto_free")
     builder.adjust(1)
     return builder.as_markup()
 
