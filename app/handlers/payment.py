@@ -199,7 +199,7 @@ async def cmd_about(message: types.Message):
         "🆔 <b>ИНН:</b> 025502709811\n\n"
         
         "📞 <b>Контакты:</b>\n"
-        "Тел.: +79951319709\n"
+        "Тел.: +79953435561\n"
         "Telegram: @nan0banana_help\n"
         "Email: help.nanobanan@gmail.com\n\n"
         
