@@ -5,6 +5,8 @@ from app.database import async_session
 from app.services.user_service import get_user_profile_data, claim_subscription_bonus
 from app.services.payment_service import create_purchase_record
 from app import config
+from app.services.admin_logger import log_payment
+
 
 router = Router()
 
@@ -108,7 +110,7 @@ async def cmd_shop(message: types.Message):
     )
 
 @router.callback_query(F.data.startswith("buy_"))
-async def cb_buy_package(callback: types.CallbackQuery):
+async def cb_buy_package(callback: types.CallbackQuery, bot: Bot): # ✅ Добавили bot
     pkg_key = callback.data.split("_")[1]
     package = PACKAGES.get(pkg_key)
     if not package: await callback.answer("Тариф не найден"); return
@@ -117,8 +119,16 @@ async def cb_buy_package(callback: types.CallbackQuery):
     async with async_session() as session:
         purchase = await create_purchase_record(session, user_id, package['price'], package['gens'])
         
-# ... (выше идет создание purchase) ...
-
+    # 👇 ДОБАВИТЬ ЛОГГЕР (Пока как факт заказа)
+    # Тут можно написать "Создал заказ", а настоящий log_payment вызывать когда придет вебхук от кассы
+    # Но для теста вставим сюда:
+    await log_payment(
+        bot, 
+        callback.from_user, 
+        amount=package['price'], 
+        item_name=f"{package['gens']} Бананов", 
+        new_balance=999 # Тут по хорошему надо брать реальный баланс, но пока заглушка или query из БД
+    )
     # Ссылка на оплату (заглушка)
     fake_payment_link = f"https://t.me/nanobanana_ai" 
     

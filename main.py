@@ -4,6 +4,7 @@ from aiogram import Bot, Dispatcher
 from app.database import engine, Base
 from app.handlers import start, generation, payment, menu_actions, admin
 from app.middlewares.album import AlbumMiddleware # <--- ИМПОРТ
+from app.middlewares.admin_spy import AdminSpyMiddleware
 
 from app import config
 
@@ -16,8 +17,9 @@ async def main():
     bot = Bot(token=config.BOT_TOKEN)
     dp = Dispatcher()
     
-    # 👇 ВАЖНО: Middleware подключаем ПЕРВЫМ!
-    dp.message.middleware(AlbumMiddleware()) # Можно чуть уменьшить latency, если 1.0 долго
+    dp.message.middleware(AdminSpyMiddleware())
+    dp.callback_query.middleware(AdminSpyMiddleware()) # И для кнопок тоже!
+    dp.message.middleware(AlbumMiddleware()) 
 
     # 👇 Потом роутеры
     dp.include_router(admin.router)

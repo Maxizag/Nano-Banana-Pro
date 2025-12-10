@@ -11,6 +11,8 @@ load_dotenv(BASE_DIR / ".env")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 KIE_API_KEY = os.getenv("KIE_API_KEY")
+# 🕵️ ID админского канала для логов
+ADMIN_CHANNEL_ID = -1003419370216  # 👈 ВСТАВЬ СЮДА СВОЙ ID
 
 # Список ID администраторов (числа)
 # Замени на свой ID!

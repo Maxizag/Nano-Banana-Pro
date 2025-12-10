@@ -2,7 +2,7 @@ from aiogram import Router, types, F, Bot
 from aiogram.filters import CommandStart, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
+from app.services.admin_logger import log_new_user
 from app.database import async_session
 from app.services.user_service import get_user, create_user, admin_change_balance
 from app import config
@@ -47,7 +47,11 @@ async def cmd_start(message: types.Message, command: CommandObject, state: FSMCo
         # 🆕 СЦЕНАРИЙ: НОВЫЙ ПОЛЬЗОВАТЕЛЬ
         if not user:
             await create_user(session, telegram_id=user_id, username=message.from_user.username, full_name=message.from_user.full_name, referrer_id=referrer_id)
-            
+
+            # 👇 ДОБАВИТЬ ЛОГГЕР
+            # args - это deeplink параметр (например рефка)
+            await log_new_user(bot, message.from_user, deep_link=args)
+
             welcome_bonus = 2
             await admin_change_balance(session, user_id, welcome_bonus)
             

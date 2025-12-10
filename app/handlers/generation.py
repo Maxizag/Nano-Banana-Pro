@@ -9,6 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.enums import ChatAction
 from aiogram import html
 import aiohttp
+from app.services.admin_logger import log_generation, log_error
 
 from app.database import async_session
 from app.services.user_service import (
@@ -890,6 +891,16 @@ async def process_generation(
                 sent_msg.photo[-1].file_id if sent_msg.photo 
                 else sent_msg.document.file_id
             )
+
+            # 👇👇👇 🟢 1. ЛОГГЕР: УСПЕШНАЯ ГЕНЕРАЦИЯ 👇👇👇
+            await log_generation(
+                bot, 
+                message.from_user, 
+                prompt=prompt, 
+                model="PRO" if use_pro_model else "Standard", 
+                photo_file_id=sent_file_id
+            )
+            # 👆👆👆 -------------------------------------
             
             meta_data = json.dumps({
                 "prompt": prompt,
@@ -921,6 +932,17 @@ async def process_generation(
         else:
             # ❌ NULL ОТВЕТ - ВОЗВРАТ ДЕНЕГ
             print("❌ API вернул NULL")
+
+            # 👇👇👇 🔴 2. ЛОГГЕР: ОШИБКА API 👇👇👇
+            await log_error(
+                bot, 
+                message.from_user.id, 
+                message.from_user.username, 
+                prompt, 
+                error_text="API returned NULL (Blocked?)"
+            )
+            # 👆👆👆 ------------------------------
+
             async with async_session() as session: 
                 await admin_change_balance(session, user_id, cost)
             
@@ -942,6 +964,17 @@ async def process_generation(
     except Exception as e:
         # ❌ КРИТИЧЕСКАЯ ОШИБКА - ВОЗВРАТ ДЕНЕГ
         print(f"❌ Критическая ошибка: {e}")
+
+        # 👇👇👇 🔴 3. ЛОГГЕР: CRASH 👇👇👇
+        await log_error(
+            bot, 
+            message.from_user.id, 
+            message.from_user.username, 
+            prompt, 
+            error_text=f"CRASH: {str(e)[:50]}"
+        )
+        # 👆👆👆 --------------------------
+        
         import traceback
         traceback.print_exc()
         
