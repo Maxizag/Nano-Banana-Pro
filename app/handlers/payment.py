@@ -1,10 +1,12 @@
 from aiogram import Router, types, F, Bot
+from aiogram.types import LabeledPrice, PreCheckoutQuery # <--- ДОБАВИТЬ ЭТО
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.database import async_session
-from app.services.user_service import get_user_profile_data, claim_subscription_bonus
+from app.services.user_service import get_user_profile_data, claim_subscription_bonus, admin_change_balance, get_user_balance
 from app.services.payment_service import create_purchase_record
 from app import config
+from app.services.payment_api import create_yoo_payment, check_yoo_payment
 from app.services.admin_logger import log_payment
 
 
@@ -109,45 +111,99 @@ async def cmd_shop(message: types.Message):
         reply_markup=builder.as_markup(), parse_mode="Markdown"
     )
 
+# 👇 ВСТАВЛЯЙ ЭТО ВМЕСТО СТАРОЙ ФУНКЦИИ cb_buy_package
+
+# 2. ОФОРМЛЕНИЕ (ТЕКСТ + ССЫЛКА НА ЮКАССУ)
+# =====================================================================
 @router.callback_query(F.data.startswith("buy_"))
-async def cb_buy_package(callback: types.CallbackQuery, bot: Bot): # ✅ Добавили bot
+async def cb_buy_package(callback: types.CallbackQuery, bot: Bot):
     pkg_key = callback.data.split("_")[1]
     package = PACKAGES.get(pkg_key)
-    if not package: await callback.answer("Тариф не найден"); return
+    
+    if not package: 
+        await callback.answer("Тариф не найден")
+        return
     
     user_id = callback.from_user.id
+    
+    # 1. Запись в БД
     async with async_session() as session:
-        purchase = await create_purchase_record(session, user_id, package['price'], package['gens'])
+        await create_purchase_record(session, user_id, package['price'], package['gens'])
+
+    try:
+        # 2. Генерируем ссылку через НАШ НОВЫЙ СЕРВИС (payment_api)
+        desc = f"Покупка {package['gens']} бананов (ID: {user_id})"
+        payment = create_yoo_payment(package['price'], desc, user_id)
         
-    # 👇 ДОБАВИТЬ ЛОГГЕР (Пока как факт заказа)
-    # Тут можно написать "Создал заказ", а настоящий log_payment вызывать когда придет вебхук от кассы
-    # Но для теста вставим сюда:
-    await log_payment(
-        bot, 
-        callback.from_user, 
-        amount=package['price'], 
-        item_name=f"{package['gens']} Бананов", 
-        new_balance=999 # Тут по хорошему надо брать реальный баланс, но пока заглушка или query из БД
-    )
-    # Ссылка на оплату (заглушка)
-    fake_payment_link = f"https://t.me/nanobanana_ai" 
-    
-    # 👇 НОВЫЙ ТЕКСТ (HTML)
-    text = (
-        "⚡ <b>Отличный выбор!</b>\n\n"
-        f"🍌 Пополнение: <b>+{package['gens']} {package['suffix']}</b>\n"
-        f"💳 К оплате: <b>{package['price']}₽</b>\n\n"
-        "⏳ <i>Бананы зачислим сразу после оплаты.</i>\n\n"
-        "📄 Оплачивая, вы принимаете условия <a href='https://telegra.ph/PUBLICHNAYA-OFERTA-12-09-5'>Оферты</a>"
-    )
-    
-    builder = InlineKeyboardBuilder()
-    builder.button(text=f"💳 Оплатить {package['price']}₽", url=fake_payment_link)
-    builder.button(text="🔙 Другой тариф", callback_data="goto_shop")
-    builder.adjust(1)
-    
-    # ⚠️ ВАЖНО: parse_mode="HTML" и disable_web_page_preview=True (чтобы ссылка не разворачивалась в картинку)
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML", disable_web_page_preview=True)
+        # Вот она, ссылка для браузера (обход Apple)
+        pay_url = payment.confirmation.confirmation_url
+        payment_id = payment.id
+
+        # 3. ТВОЙ ТЕКСТ С ОФЕРТОЙ
+        text = (
+            "⚡ <b>Отличный выбор!</b>\n\n"
+            f"🍌 Пополнение: <b>+{package['gens']} {package['suffix']}</b>\n"
+            f"💳 К оплате: <b>{package['price']}₽</b>\n\n"
+            "⏳ <i>Бананы зачислим сразу после оплаты.</i>\n\n"
+            "📄 Оплачивая, вы принимаете условия <a href='https://telegra.ph/PUBLICHNAYA-OFERTA-12-09-5'>Оферты</a>"
+        )
+        
+        builder = InlineKeyboardBuilder()
+        # Кнопка ведет в БРАУЗЕР (url=pay_url)
+        builder.button(text=f"💳 Оплатить {package['price']}₽", url=pay_url)
+        # Кнопка ручной проверки (нужна для polling-бота)
+        builder.button(text="✅ Я оплатил", callback_data=f"check_{payment_id}_{pkg_key}")
+        builder.button(text="🔙 Отмена", callback_data="goto_shop")
+        builder.adjust(1)
+        
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML", disable_web_page_preview=True)
+        
+    except Exception as e:
+        print(f"YooKassa Error: {e}")
+        await callback.answer("Ошибка создания ссылки. Попробуйте позже.", show_alert=True)
+
+# =====================================================================
+# 3. ПРОВЕРКА ПЛАТЕЖА (ПО КНОПКЕ)
+# =====================================================================
+@router.callback_query(F.data.startswith("check_"))
+async def cb_check_payment(callback: types.CallbackQuery, bot: Bot):
+    parts = callback.data.split("_")
+    payment_id = parts[1]
+    pkg_key = parts[2]
+    package = PACKAGES.get(pkg_key)
+    if not package: return
+
+    try:
+        # Проверяем статус в ЮКассе через API
+        status = check_yoo_payment(payment_id)
+        
+        if status == "succeeded":
+            async with async_session() as session:
+                # Начисляем
+                await admin_change_balance(session, callback.from_user.id, package['gens'])
+                # Логируем
+                try:
+                    new_bal = await get_user_balance(session, callback.from_user.id)
+                    await log_payment(bot, callback.from_user, package['price'], f"{package['gens']} Бананов", new_bal)
+                except: pass
+
+            # Поздравляем
+            await callback.message.edit_text(
+                f"✅ <b>Оплата прошла успешно!</b>\n\n"
+                f"🍌 Начислено: <b>+{package['gens']} бананов</b>\n"
+                f"Спасибо за покупку! Можно снова творить 🎨",
+                parse_mode="HTML"
+            )
+            
+        elif status == "pending":
+            await callback.answer("⏳ Оплата еще не поступила. Завершите платеж в браузере.", show_alert=True)
+            
+        elif status == "canceled":
+            await callback.message.edit_text("❌ Платеж отменен.", reply_markup=None)
+            
+    except Exception as e:
+        print(f"Check Error: {e}")
+        await callback.answer("Ошибка проверки.", show_alert=True)
 
 @router.message(F.text == "👤 Профиль") 
 @router.message(Command("profile"))
