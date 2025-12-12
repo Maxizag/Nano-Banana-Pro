@@ -848,8 +848,16 @@ async def process_generation(
     # 🔥 ОПРЕДЕЛЯЕМ СЦЕНАРИЙ: Простой vs Сложный
     is_complex_standard = (not use_pro_model and len(final_urls) >= 2)
 
-# 🔥 AUTO-COLLAGE ДЛЯ STANDARD + НЕСКОЛЬКО ФОТО
-    if is_complex_standard and len(final_urls) >= 2:
+    # 🔥 ДЕТЕКТОР ЗАДАЧ ТИПА "ЗАМЕНА/ВСТАВКА"
+    swap_keywords = [
+        'поменя', 'замен', 'положи', 'помести', 'вставь', 'перенес', 
+        'возьми', 'бери', 'со второ', 'из второ', 'с друго', 'из друго',
+        'swap', 'replace', 'put', 'place', 'take from'
+    ]
+    is_swap_task = any(keyword in prompt.lower() for keyword in swap_keywords)
+
+    # 🔥 AUTO-COLLAGE ТОЛЬКО ДЛЯ НЕ-SWAP ЗАДАЧ
+    if is_complex_standard and len(final_urls) >= 2 and not is_swap_task:
         try:
             print(f"🎨 Создаю коллаж из {len(final_urls)} фото...")
             
