@@ -859,7 +859,7 @@ async def process_generation(
     # 🔥 AUTO-COLLAGE ТОЛЬКО ДЛЯ НЕ-SWAP ЗАДАЧ
     if is_complex_standard and len(final_urls) >= 2 and not is_swap_task:
         try:
-            print(f"🎨 Создаю коллаж из {len(final_urls)} фото...")
+            print(f"🎨 Создаю коллаж из {len(final_urls)} фото...") 
             
             # 1. Скачиваем все изображения
             images = []
@@ -904,16 +904,24 @@ async def process_generation(
             except:
                 pass
             
-            # 7. ВАЖНО: Заменяем final_urls на коллаж
+# 7. ВАЖНО: Заменяем final_urls на коллаж
             final_urls = [collage_url]
             
+            # 🔥 МОДИФИЦИРУЕМ ПРОМПТ ДЛЯ КОЛЛАЖА
+            
+            if len(images) == 2:
+                prompt = f"{prompt}. IMPORTANT: Combine both subjects into a SINGLE unified scene. They should interact naturally, standing together. Do NOT keep the collage structure - merge them into one cohesive image."
+            elif len(images) >= 3:
+                prompt = f"{prompt}. IMPORTANT: Create a SINGLE unified composition with all {len(images)} subjects together in one scene. Remove the grid layout - merge into one natural photo."
+            
             print(f"✅ Коллаж создан: {collage_url[:50]}...")
+            print(f"📝 Промпт изменён: {prompt[:150]}...")
             
         except Exception as e:
             print(f"⚠️ Ошибка создания коллажа: {e}")
             import traceback
             traceback.print_exc()
-            # Продолжаем с оригинальными URL (fallback)    
+            # Продолжаем с оригинальными URL (fallback)
     
 # 2. Сообщение о старте (РАЗНОЕ для простого/сложного)
     if is_complex_standard:
