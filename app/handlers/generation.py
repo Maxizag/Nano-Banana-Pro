@@ -361,7 +361,6 @@ async def handle_album_input(message: types.Message, state: FSMContext, bot: Bot
     else:  # >= 2 фото
         await state.update_data(pending_image_urls=image_urls)
         if full_caption:
-            await message.answer(f"📚 Серия: {count} фото. Открываю настройки...")
             await start_preflight_check(message, state, full_caption, image_urls)
         else:
             await state.set_state(GenState.waiting_for_caption)
