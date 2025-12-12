@@ -1,5 +1,5 @@
 from aiogram import Router, types, F, Bot
-from aiogram.types import LabeledPrice, PreCheckoutQuery # <--- ДОБАВИТЬ ЭТО
+from aiogram.types import LabeledPrice, PreCheckoutQuery
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.database import async_session
@@ -23,6 +23,24 @@ PACKAGES = {
     "xl": {"name": "Mega", "gens": 340, "price": 1499, "emoji": "", "suffix": "бананов"},
     "whale": {"name": "Whale", "gens": 832, "price": 3499, "emoji": "👑", "suffix": "банана"},
 }
+
+# Stars пакеты
+STARS_PACKAGES = {
+    "stars_4": {"bananas": 4, "stars": 35, "emoji": "🍌"},
+    "stars_12": {"bananas": 12, "stars": 90, "emoji": "🍌"},
+    "stars_24": {"bananas": 24, "stars": 160, "emoji": "🍌"},
+    "stars_60": {"bananas": 60, "stars": 350, "emoji": "🍌"},
+    "stars_120": {"bananas": 120, "stars": 650, "emoji": "🍌"},
+}
+
+def get_banana_suffix(count):
+    """Возвращает правильное окончание для слова 'банан'"""
+    if count % 10 == 1 and count % 100 != 11:
+        return "банан"
+    elif count % 10 in [2, 3, 4] and count % 100 not in [12, 13, 14]:
+        return "банана"
+    else:
+        return "бананов"
 
 # =====================================================================
 # 🎁 РАЗДЕЛ ХАЛЯВЫ (Обновленный текст)
@@ -97,6 +115,8 @@ async def cb_check_chat(callback: types.CallbackQuery, bot: Bot):
 @router.message(Command("buy"))
 async def cmd_shop(message: types.Message):
     builder = InlineKeyboardBuilder()
+    
+    # Рублевые пакеты
     for key, pkg in PACKAGES.items():
         # Расчет цены за 1 шт
         p = pkg['price'] / pkg['gens']
@@ -105,41 +125,73 @@ async def cmd_shop(message: types.Message):
         
         btn = f"{pkg['emoji']}{pkg['gens']} {pkg['suffix']} - {pkg['price']}₽ | {s}₽/🍌"
         builder.button(text=btn, callback_data=f"buy_{key}")
+    
+    # Кнопка перехода на Stars
+    builder.button(text="⭐️ Оплатить Stars", callback_data="open_stars_menu")
+    
     builder.adjust(1)
     await message.answer(
         "🍌 *Магазин Бананов*\n\nПополни баланс и твори без ограничений!\n\n*Стоимость:*\n🍌 Standard: 1 банан\n💎 PRO: 4 банана\n\nВыбери пакет👇",
         reply_markup=builder.as_markup(), parse_mode="Markdown"
     )
 
-# 👇 ВСТАВЛЯЙ ЭТО ВМЕСТО СТАРОЙ ФУНКЦИИ cb_buy_package
+# Меню Stars
+@router.callback_query(F.data == "open_stars_menu")
+async def show_stars_menu(callback: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    
+    for key, pkg in STARS_PACKAGES.items():
+        suffix = get_banana_suffix(pkg['bananas'])
+        btn_text = f"{pkg['emoji']} {pkg['bananas']} {suffix} — {pkg['stars']} ⭐️"
+        builder.button(text=btn_text, callback_data=f"buy_{key}")
+    
+    builder.button(text="🔙 Назад к рублям", callback_data="open_rub_menu")
+    builder.adjust(1)
+    
+    await callback.message.edit_text(
+        "⭐️ *Оплата Telegram Stars*\n\nВыбери пакет:",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown"
+    )
 
+# Возврат к рублевому меню
+@router.callback_query(F.data == "open_rub_menu")
+async def back_to_rub_menu(callback: types.CallbackQuery):
+    await callback.answer()
+    await cmd_shop(callback.message)
+
+# =====================================================================
 # 2. ОФОРМЛЕНИЕ (ТЕКСТ + ССЫЛКА НА ЮКАССУ)
 # =====================================================================
 @router.callback_query(F.data.startswith("buy_"))
 async def cb_buy_package(callback: types.CallbackQuery, bot: Bot):
-    pkg_key = callback.data.split("_")[1]
-    package = PACKAGES.get(pkg_key)
+    parts = callback.data.split("_")
     
+    # Проверяем, это Stars пакет или рублевый
+    if len(parts) >= 3 and parts[1] == "stars":
+        # STARS ЛОГИКА
+        pkg_key = f"{parts[1]}_{parts[2]}"  # stars_4, stars_12 и т.д.
+        await handle_stars_purchase(callback, bot, pkg_key)
+        return
+    
+    # РУБЛИ ЛОГИКА (старая)
+    pkg_key = parts[1]
+    package = PACKAGES.get(pkg_key)
     if not package: 
         await callback.answer("Тариф не найден")
         return
     
     user_id = callback.from_user.id
     
-    # 1. Запись в БД
     async with async_session() as session:
         await create_purchase_record(session, user_id, package['price'], package['gens'])
 
     try:
-        # 2. Генерируем ссылку через НАШ НОВЫЙ СЕРВИС (payment_api)
         desc = f"Покупка {package['gens']} бананов (ID: {user_id})"
         payment = create_yoo_payment(package['price'], desc, user_id)
-        
-        # Вот она, ссылка для браузера (обход Apple)
         pay_url = payment.confirmation.confirmation_url
         payment_id = payment.id
 
-        # 3. ТВОЙ ТЕКСТ С ОФЕРТОЙ
         text = (
             "⚡ <b>Отличный выбор!</b>\n\n"
             f"🍌 Пополнение: <b>+{package['gens']} {package['suffix']}</b>\n"
@@ -149,9 +201,7 @@ async def cb_buy_package(callback: types.CallbackQuery, bot: Bot):
         )
         
         builder = InlineKeyboardBuilder()
-        # Кнопка ведет в БРАУЗЕР (url=pay_url)
         builder.button(text=f"💳 Оплатить {package['price']}₽", url=pay_url)
-        # Кнопка ручной проверки (нужна для polling-бота)
         builder.button(text="✅ Я оплатил", callback_data=f"check_{payment_id}_{pkg_key}")
         builder.button(text="🔙 Отмена", callback_data="goto_shop")
         builder.adjust(1)
@@ -161,6 +211,31 @@ async def cb_buy_package(callback: types.CallbackQuery, bot: Bot):
     except Exception as e:
         print(f"YooKassa Error: {e}")
         await callback.answer("Ошибка создания ссылки. Попробуйте позже.", show_alert=True)
+
+# Создание Stars инвойса
+async def handle_stars_purchase(callback: types.CallbackQuery, bot: Bot, pkg_key: str):
+    package = STARS_PACKAGES.get(pkg_key)
+    if not package:
+        await callback.answer("Пакет не найден")
+        return
+    
+    user_id = callback.from_user.id
+    suffix = get_banana_suffix(package['bananas'])
+    
+    # Формируем payload для идентификации платежа
+    payload = f"{pkg_key}_{user_id}"
+    
+    await bot.send_invoice(
+        chat_id=callback.message.chat.id,
+        title=f"{package['bananas']} {suffix}",
+        description=f"Пополнение баланса на {package['bananas']} {suffix}",
+        payload=payload,
+        currency="XTR",
+        prices=[LabeledPrice(label=f"{package['bananas']} {suffix}", amount=package['stars'])],
+        provider_token=""  # Для Stars пустой
+    )
+    
+    await callback.answer()
 
 # =====================================================================
 # 3. ПРОВЕРКА ПЛАТЕЖА (ПО КНОПКЕ)
@@ -287,3 +362,51 @@ async def cb_goto_free(callback: types.CallbackQuery, bot: Bot):
     await callback.answer()
     # Вызываем функцию с заданиями (она тоже в этом файле)
     await show_freebies(callback.message, bot)
+
+# =====================================================================
+# ОБРАБОТЧИКИ STARS ПЛАТЕЖЕЙ
+# =====================================================================
+
+# Pre-checkout для Stars
+@router.pre_checkout_query()
+async def process_pre_checkout(pre_checkout: PreCheckoutQuery, bot: Bot):
+    await bot.answer_pre_checkout_query(
+        pre_checkout_query_id=pre_checkout.id,
+        ok=True
+    )
+
+# Успешная оплата Stars
+@router.message(F.successful_payment)
+async def process_successful_payment(message: types.Message, bot: Bot):
+    payment = message.successful_payment
+    payload = payment.invoice_payload
+    
+    # Извлекаем pkg_key и user_id из payload
+    parts = payload.split("_")
+    pkg_key = f"{parts[0]}_{parts[1]}"  # stars_4, stars_12 и т.д.
+    user_id = int(parts[2])
+    
+    package = STARS_PACKAGES.get(pkg_key)
+    if not package:
+        await message.answer("❌ Ошибка обработки платежа")
+        return
+    
+    suffix = get_banana_suffix(package['bananas'])
+    
+    # Начисляем бананы
+    async with async_session() as session:
+        await admin_change_balance(session, user_id, package['bananas'])
+        
+        # Логируем платеж
+        try:
+            new_bal = await get_user_balance(session, user_id)
+            await log_payment(bot, message.from_user, package['stars'], f"{package['bananas']} {suffix} (Stars)", new_bal)
+        except:
+            pass
+    
+    await message.answer(
+        f"✅ <b>Оплата прошла успешно!</b>\n\n"
+        f"🍌 Начислено: <b>{package['bananas']} {suffix}</b>\n"
+        f"Спасибо за покупку! 🎨",
+        parse_mode="HTML"
+    )
