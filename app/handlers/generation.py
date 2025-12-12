@@ -82,6 +82,41 @@ def normalize_image_urls(image_urls) -> list:
         return image_urls
     return []
 
+def create_collage(images: list, max_size=1024) -> Image.Image:
+    """
+    Создаёт коллаж из 2-4 изображений
+    
+    2 фото: горизонтально [img1][img2]
+    3-4 фото: сетка 2x2
+    """
+    count = len(images)
+    
+    if count == 2:
+        cols, rows = 2, 1
+    elif count <= 4:
+        cols, rows = 2, 2
+    else:
+        raise ValueError("Max 4 images")
+    
+    cell_w = max_size // cols
+    cell_h = max_size // rows
+    
+    canvas = Image.new('RGB', (max_size, max_size), 'white')
+    
+    for idx, img in enumerate(images):
+        img_resized = img.copy()
+        img_resized.thumbnail((cell_w, cell_h), Image.Resampling.LANCZOS)
+        
+        col = idx % cols
+        row = idx // cols
+        
+        x = col * cell_w + (cell_w - img_resized.width) // 2
+        y = row * cell_h + (cell_h - img_resized.height) // 2
+        
+        canvas.paste(img_resized, (x, y))
+    
+    return canvas
+
 async def get_photo_url(bot: Bot, file_id: str) -> str:
     """Получает URL фото"""
     if not file_id:
@@ -812,6 +847,65 @@ async def process_generation(
     
     # 🔥 ОПРЕДЕЛЯЕМ СЦЕНАРИЙ: Простой vs Сложный
     is_complex_standard = (not use_pro_model and len(final_urls) >= 2)
+
+# 🔥 AUTO-COLLAGE ДЛЯ STANDARD + НЕСКОЛЬКО ФОТО
+    if is_complex_standard and len(final_urls) >= 2:
+        try:
+            print(f"🎨 Создаю коллаж из {len(final_urls)} фото...")
+            
+            # 1. Скачиваем все изображения
+            images = []
+            timeout = aiohttp.ClientTimeout(total=30)
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                for url in final_urls:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            img_data = await resp.read()
+                            img = Image.open(io.BytesIO(img_data))
+                            images.append(img)
+            
+            if len(images) < len(final_urls):
+                print(f"⚠️ Не все фото загрузились: {len(images)}/{len(final_urls)}")
+            
+            if not images:
+                print("❌ Ни одно фото не загрузилось для коллажа")
+                raise Exception("No images loaded")
+            
+            # 2. Создаём коллаж (синхронная функция)
+            collage = create_collage(images, max_size=1024)
+            
+            # 3. Конвертируем в bytes
+            collage_bytes = io.BytesIO()
+            collage.save(collage_bytes, format='PNG')
+            collage_bytes.seek(0)
+            
+# 4. Загружаем коллаж в Telegram (БЕЗ уведомления)
+            temp_msg = await bot.send_photo(
+                chat_id=user_id,
+                photo=types.BufferedInputFile(collage_bytes.read(), "collage.png"),
+                disable_notification=True  # 👈 БЕЗ ЗВУКА
+)
+            
+            # 5. Получаем URL коллажа
+            collage_url = await get_photo_url(bot, temp_msg.photo[-1].file_id)
+            
+            # 6. Удаляем временное сообщение
+            try:
+                await temp_msg.delete()
+            except:
+                pass
+            
+            # 7. ВАЖНО: Заменяем final_urls на коллаж
+            final_urls = [collage_url]
+            
+            print(f"✅ Коллаж создан: {collage_url[:50]}...")
+            
+        except Exception as e:
+            print(f"⚠️ Ошибка создания коллажа: {e}")
+            import traceback
+            traceback.print_exc()
+            # Продолжаем с оригинальными URL (fallback)    
     
 # 2. Сообщение о старте (РАЗНОЕ для простого/сложного)
     if is_complex_standard:
