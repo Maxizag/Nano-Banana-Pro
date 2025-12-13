@@ -26,7 +26,7 @@ router = Router()
 
 # 👇 ЗАМЕНИТЬ ВЕСЬ СПИСОК IGNORED_TEXTS НА ЭТОТ:
 IGNORED_TEXTS = [
-    "✨ Начать творить", "🎨 Создать изображение",
+    "✨ Начать творить", "🎨 Создать изображение", "Заработать🍌",
     "📸 Примеры работ", "👤 Профиль", "👤 Мой профиль",
     "🍌 Купить бананы", "Фарминг🍌", "ℹ️ О нас", "ℹ️ Что умеет бот?",
     "/start", "/help", "/admin", "/stats", "/clear"
@@ -130,7 +130,7 @@ async def get_photo_url(bot: Bot, file_id: str) -> str:
 def get_no_balance_kb():
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 Купить бананы", callback_data="goto_shop")
-    builder.button(text="🎁 Получить бесплатно", callback_data="goto_free")
+    builder.button(text="Заработать🍌", callback_data="goto_free")
     builder.adjust(1)
     return builder.as_markup()
 

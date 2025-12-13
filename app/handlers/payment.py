@@ -45,7 +45,7 @@ def get_banana_suffix(count):
 # =====================================================================
 # 🎁 РАЗДЕЛ ХАЛЯВЫ (Обновленный текст)
 # =====================================================================
-@router.message(F.text == "🎁 Бесплатно🍌🍌")
+@router.message(F.text == "Заработать🍌")
 async def show_freebies(message: types.Message, bot: Bot):
     user_id = message.from_user.id
     bot_info = await bot.me()

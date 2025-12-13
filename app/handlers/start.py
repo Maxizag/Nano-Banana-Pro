@@ -24,7 +24,7 @@ def get_main_kb():
     kb = [
         [KeyboardButton(text="✨ Начать творить")],
         [KeyboardButton(text="🍌 Купить бананы"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="🎁 Бесплатно🍌🍌"), KeyboardButton(text="ℹ️ О нас")]
+        [KeyboardButton(text="Заработать🍌"), KeyboardButton(text="ℹ️ О нас")]
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, input_field_placeholder="Пиши сюда ")
 
@@ -90,7 +90,7 @@ async def cmd_start(message: types.Message, command: CommandObject, state: FSMCo
                 text = (
                     f"👋 С возвращением!\n"
                     f"🍌 Твой баланс: *0 бананов*\n\n"
-                    f"👇 Пополни запас кнопкой *[🎁 Бесплатно🍌🍌]*"
+                    f"👇 Пополни запас кнопкой *[Заработать🍌]*"
                 )
             else:
                 word = get_banana_word(bal)
